@@ -16,6 +16,27 @@ module cpu(
 	output wire [31:0]			dbgreg_dout		// cpu register output (debugging demo)
 );
 
+
+// minimal placeholder state machine to exit immediately
+localparam IO_BASE = 32'h0003_0000;
+localparam IO_EXIT = IO_BASE + 32'h4;
+
+assign dbgreg_dout = 32'h0;
+
+reg [1:0] state;
+localparam S_RESET = 2'd0;
+localparam S_WAIT  = 2'd1;
+localparam S_WRITE = 2'd2;
+localparam S_DONE  = 2'd3;
+
+reg [7:0]  mem_dout_r;
+reg [31:0] mem_a_r;
+reg        mem_wr_r;
+
+assign mem_dout = mem_dout_r;
+assign mem_a    = mem_a_r;
+assign mem_wr   = mem_wr_r;
+
 // implementation goes here
 
 // Specifications:
@@ -28,20 +49,40 @@ module cpu(
 // - 0x30004 read: read clocks passed since cpu starts (in dword, 4 bytes)
 // - 0x30004 write: indicates program stop (will output '\0' through uart tx)
 
-always @(posedge clk_in)
-  begin
-    if (rst_in)
-      begin
-      
+always @(posedge clk_in) begin
+  if (rst_in) begin
+    state      <= S_RESET;
+    mem_dout_r <= 8'h00;
+    mem_a_r    <= 32'h0;
+    mem_wr_r   <= 1'b0;
+  end else if (!rdy_in) begin
+    // hold state when not ready
+    state      <= state;
+    mem_dout_r <= mem_dout_r;
+    mem_a_r    <= mem_a_r;
+    mem_wr_r   <= mem_wr_r;
+  end else begin
+    case (state)
+      S_RESET: begin
+        mem_wr_r   <= 1'b0;
+        state      <= S_WAIT;
       end
-    else if (!rdy_in)
-      begin
-      
+      S_WAIT: begin
+        mem_a_r    <= IO_EXIT;
+        mem_dout_r <= 8'h00;
+        mem_wr_r   <= 1'b1;
+        state      <= S_WRITE;
       end
-    else
-      begin
-      
+      S_WRITE: begin
+        mem_wr_r   <= 1'b0;
+        state      <= S_DONE;
       end
+      default: begin
+        mem_wr_r   <= 1'b0;
+        state      <= S_DONE;
+      end
+    endcase
   end
+end
 
 endmodule
